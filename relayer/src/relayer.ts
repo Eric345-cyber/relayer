@@ -61,13 +61,20 @@ export class RelayerService {
     
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
     
+    const yParityNum = parseInt(authTuple[3], 16);
+    
     const authorizationLike = {
       chainId: BigInt(authTuple[0]),
       address: authTuple[1],
       nonce: parseInt(authTuple[2], 16),
-      yParity: parseInt(authTuple[3], 16),
+      yParity: yParityNum,
       r: authTuple[4],
-      s: authTuple[5]
+      s: authTuple[5],
+      signature: ethers.Signature.from({
+        r: authTuple[4],
+        s: authTuple[5],
+        v: yParityNum + 27
+      }).serialized
     };
     
     const feeData = await this.provider.getFeeData();
@@ -114,5 +121,5 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-      }
-                      
+    }
+              
