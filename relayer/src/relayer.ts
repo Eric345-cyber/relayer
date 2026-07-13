@@ -49,14 +49,9 @@ export class RelayerService {
     
     try {
       const currentNonce = await this.provider.getTransactionCount(userAddress, 'latest');
-      if (currentNonce !== nonce) {
-        return { 
-          success: false, 
-          error: `Nonce mismatch: signed ${nonce}, current is ${currentNonce}. Please refresh and retry.` 
-        };
-      }
+      console.log(`User tx nonce: ${currentNonce}, auth nonce: ${nonce}`);
     } catch (e) {
-      return { success: false, error: 'Failed to verify nonce' };
+      console.log('Could not get tx nonce:', e);
     }
     
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
@@ -121,5 +116,5 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-    }
-              
+  }
+        
