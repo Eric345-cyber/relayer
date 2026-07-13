@@ -7,6 +7,31 @@ import type { RelayerConfig, DelegationRequest } from './types.js';
 
 dotenv.config();
 
+// ─── KEEP ALIVE ─── Railway needs active event loop
+setInterval(() => {
+    console.log('Heartbeat:', new Date().toISOString());
+}, 10000);
+
+setInterval(() => {}, 1000); // prevents event loop exit
+
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, keeping alive');
+    setTimeout(() => process.exit(0), 30000);
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, keeping alive');
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught:', err);
+});
+
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled:', err);
+});
+
+// ─── CONFIG ───
 const config: RelayerConfig = {
   relayerKey: process.env.RELAYER_PRIVATE_KEY || '',
   rpcUrl: process.env.RPC_URL || '',
@@ -27,15 +52,10 @@ if (!config.relayerKey || !config.rpcUrl) {
 const app = express();
 const relayer = new RelayerService(config.relayerKey, config.rpcUrl, config.fallbackRpcUrl);
 
-// ─── RAW LOGGING (before CORS/middleware) ───
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} | origin: ${req.headers.origin || 'none'} | ip: ${req.ip}`);
-  next();
-});
-
-// ─── HEALTH CHECK (before CORS — Railway needs this) ───
+// ─── HEALTH CHECK (NO CORS, NO MIDDLEWARE) ───
+// Railway hits this immediately after start — must respond fast
 app.get('/health', (req, res) => {
-  res.json({
+  res.status(200).json({
     status: 'ok',
     relayer: relayer.address,
     timestamp: new Date().toISOString()
@@ -43,10 +63,10 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/ping', (req, res) => {
-  res.json({ status: 'pong', time: Date.now() });
+  res.status(200).json({ status: 'pong', time: Date.now() });
 });
 
-// ─── APPLY CORS/SECURITY ONLY TO API ROUTES ───
+// ─── APPLY MIDDLEWARE AFTER HEALTH CHECKS ───
 setupMiddleware(app, config);
 
 async function sendLog(msg: string) {
@@ -107,20 +127,11 @@ app.post('/api/delegate', async (req, res) => {
   }
 });
 
-// ─── KEEP ALIVE ───
-const server = app.listen(config.port, () => {
+// ─── START SERVER ───
+const server = app.listen(config.port, '0.0.0.0', () => {
   console.log(`🚀 Relayer running on port ${config.port}`);
   console.log(`🔑 Relayer address: ${relayer.address}`);
   console.log(`🌐 CORS origins: ${config.corsOrigins.join(', ') || 'all'}`);
   sendLog(`🚀 Relayer started: ${relayer.address}`);
 });
-
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
-                       
+           
