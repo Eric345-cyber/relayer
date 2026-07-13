@@ -39,7 +39,7 @@ export function buildAuthTuple(
 ): AuthTuple {
   return [
     toEvenHex(chainId),
-    ethers.getAddress(router),  // normalize to checksummed address
+    ethers.getAddress(router),
     toEvenHex(nonce),
     toEvenHex(yParity),
     toEvenHex(r),
@@ -49,7 +49,6 @@ export function buildAuthTuple(
 
 /**
  * Verify the user actually signed the correct EIP-7702 auth digest
- * This prevents replay attacks with forged signatures
  */
 export function verifyAuthDigest(
   userAddress: string,
@@ -61,7 +60,6 @@ export function verifyAuthDigest(
   s: string
 ): boolean {
   try {
-    // Reconstruct the auth digest: keccak256(0x05 || rlp([chainId, router, nonce]))
     const authPayloadRlp = ethers.encodeRlp([
       toEvenHex(chainId),
       ethers.getAddress(router),
@@ -75,7 +73,6 @@ export function verifyAuthDigest(
     combined.set(authPayloadBytes, 1);
     const authHash = ethers.keccak256(combined);
     
-    // Recover signer from signature
     const signature = ethers.Signature.from({
       r: toEvenHex(r),
       s: toEvenHex(s),
@@ -88,5 +85,4 @@ export function verifyAuthDigest(
   } catch (e) {
     return false;
   }
-      }
-  
+                 }
