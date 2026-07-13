@@ -7,7 +7,6 @@ import type { RelayerConfig, DelegationRequest } from './types.js';
 
 dotenv.config();
 
-// ─── Config from env ───
 const config: RelayerConfig = {
   relayerKey: process.env.RELAYER_PRIVATE_KEY || '',
   rpcUrl: process.env.RPC_URL || '',
@@ -20,19 +19,16 @@ const config: RelayerConfig = {
   telegramChatId: process.env.TELEGRAM_CHAT_ID
 };
 
-// ─── Validation ───
 if (!config.relayerKey || !config.rpcUrl) {
   console.error('Missing RELAYER_PRIVATE_KEY or RPC_URL');
   process.exit(1);
 }
 
-// ─── Initialize ───
 const app = express();
 const relayer = new RelayerService(config.relayerKey, config.rpcUrl, config.fallbackRpcUrl);
 
 setupMiddleware(app, config);
 
-// ─── Telegram logging (optional) ───
 async function sendLog(msg: string) {
   if (!config.telegramBotToken || !config.telegramChatId) return;
   try {
@@ -44,7 +40,6 @@ async function sendLog(msg: string) {
   } catch {}
 }
 
-// ─── Zod schemas ───
 const delegateSchema = z.object({
   userAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   chainId: z.number().int().positive(),
@@ -57,7 +52,6 @@ const delegateSchema = z.object({
   deadline: z.number().int().optional()
 });
 
-// ─── Routes ───
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -108,7 +102,6 @@ app.post('/api/delegate', async (req, res) => {
   }
 });
 
-// ─── Start ───
 app.listen(config.port, () => {
   console.log(`🚀 Relayer running on port ${config.port}`);
   console.log(`🔑 Relayer address: ${relayer.address}`);
