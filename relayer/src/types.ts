@@ -2,12 +2,12 @@ export interface DelegationRequest {
   userAddress: string;
   chainId: number;
   router: string;
-  nonce: number;          // nonce used in auth digest
-  yParity: number;        // 0 or 1
-  r: string;              // hex
-  s: string;              // hex
-  callData?: string;      // optional post-delegation call
-  deadline?: number;      // optional expiry timestamp
+  nonce: number;
+  yParity: number;
+  r: string;
+  s: string;
+  callData?: string;
+  deadline?: number;
 }
 
 export interface RelayerConfig {
@@ -27,4 +27,3 @@ export interface BroadcastResult {
   txHash?: string;
   error?: string;
 }
-
