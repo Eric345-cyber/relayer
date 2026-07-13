@@ -27,17 +27,29 @@ if (!config.relayerKey || !config.rpcUrl) {
 const app = express();
 const relayer = new RelayerService(config.relayerKey, config.rpcUrl, config.fallbackRpcUrl);
 
+// ─── LOG EVERY REQUEST ───
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} | origin: ${req.headers.origin || 'none'} | ip: ${req.ip}`);
+  next();
+});
+
 setupMiddleware(app, config);
 
 async function sendLog(msg: string) {
-  if (!config.telegramBotToken || !config.telegramChatId) return;
+  if (!config.telegramBotToken || !config.telegramChatId) {
+    console.log('[TELEGRAM SKIP] No token/chat configured');
+    return;
+  }
   try {
     await fetch(`https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: config.telegramChatId, text: msg })
     });
-  } catch {}
+    console.log('[TELEGRAM SENT]', msg.slice(0, 50));
+  } catch (e) {
+    console.log('[TELEGRAM FAIL]', e);
+  }
 }
 
 const delegateSchema = z.object({
@@ -50,6 +62,12 @@ const delegateSchema = z.object({
   s: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
   callData: z.string().regex(/^0x[a-fA-F0-9]*$/).optional(),
   deadline: z.number().int().optional()
+});
+
+// ─── HEARTBEAT / PING ───
+app.get('/ping', (req, res) => {
+  console.log('[PING] from', req.headers.origin || 'no origin');
+  res.json({ status: 'pong', time: Date.now() });
 });
 
 app.get('/health', (req, res) => {
@@ -70,9 +88,12 @@ app.get('/balance', async (req, res) => {
 });
 
 app.post('/api/delegate', async (req, res) => {
+  console.log('[DELEGATE] Body:', JSON.stringify(req.body).slice(0, 200));
+  
   try {
     const parsed = delegateSchema.safeParse(req.body);
     if (!parsed.success) {
+      console.log('[DELEGATE] Validation failed:', parsed.error.issues.map(i => i.message).join(', '));
       return res.status(400).json({
         success: false,
         error: 'Invalid request: ' + parsed.error.issues.map(i => i.message).join(', ')
@@ -81,23 +102,23 @@ app.post('/api/delegate', async (req, res) => {
     
     const request: DelegationRequest = parsed.data;
     
-    console.log(`Delegation request from ${request.userAddress}`);
-    await sendLog(`🚀 Delegation request: ${request.userAddress.slice(0, 12)}... → ${request.router.slice(0, 12)}...`);
+    console.log(`[DELEGATE] Request from ${request.userAddress}`);
+    await sendLog(`🚀 Delegation: ${request.userAddress.slice(0, 12)}...`);
     
     const result = await relayer.delegate(request);
     
     if (result.success) {
-      console.log(`✅ Tx broadcasted: ${result.txHash}`);
-      await sendLog(`✅ Delegated! tx: ${result.txHash?.slice(0, 20)}...`);
+      console.log(`[DELEGATE] ✅ Tx: ${result.txHash}`);
+      await sendLog(`✅ ${result.txHash?.slice(0, 20)}...`);
       res.json(result);
     } else {
-      console.log(`❌ Failed: ${result.error}`);
-      await sendLog(`❌ Failed: ${result.error}`);
+      console.log(`[DELEGATE] ❌ ${result.error}`);
+      await sendLog(`❌ ${result.error}`);
       res.status(400).json(result);
     }
   } catch (e: any) {
-    console.error('Unhandled error:', e);
-    await sendLog(`💥 Server error: ${e.message}`);
+    console.error('[DELEGATE] 💥 Unhandled:', e);
+    await sendLog(`💥 ${e.message}`);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
@@ -108,3 +129,4 @@ app.listen(config.port, () => {
   console.log(`🌐 CORS origins: ${config.corsOrigins.join(', ') || 'all'}`);
   sendLog(`🚀 Relayer started: ${relayer.address}`);
 });
+    
