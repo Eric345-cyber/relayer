@@ -91,7 +91,32 @@ app.post('/api/delegate', async (req, res) => {
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+app.get('/', (req, res) => res.send('ok'));
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log('Relayer on port ' + PORT);
     console.log('Address: ' + relayerWallet.address);
+});
+
+setInterval(() => {
+    console.log('Heartbeat:', new Date().toISOString());
+}, 10000);
+
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, keeping alive');
+    setTimeout(() => process.exit(0), 30000);
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, keeping alive');
+});
+
+setInterval(() => {}, 1000);
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught:', err);
+});
+
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled:', err);
 });
