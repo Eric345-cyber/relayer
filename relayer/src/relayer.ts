@@ -30,7 +30,7 @@ export class RelayerService {
       userAddress,
       chainId,
       router,
-      nonce,        // This is the AUTH nonce (from user)
+      nonce,
       yParity,
       r,
       s,
@@ -49,18 +49,24 @@ export class RelayerService {
     
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
     
+    // ─── FIX: Use yParity (0/1) not v (27/28) for Signature.from() ───
+    const signature = ethers.Signature.from({
+      r: authTuple[4],
+      s: authTuple[5],
+      yParity: yParity  // 0 or 1, correct for EIP-7702
+    });
+    
     const authorizationLike: any = {
       chainId: BigInt(authTuple[0]),
       address: authTuple[1],
-      nonce: nonce,        // Auth nonce (user's tx count when they signed)
+      nonce: nonce,
       yParity: yParity,
       r: authTuple[4],
-      s: authTuple[5]
+      s: authTuple[5],
+      signature: signature.serialized
     };
     
-    // ─── FIX: Get RELAYER's nonce for the tx, not user's auth nonce ───
     const relayerNonce = await this.wallet.getNonce();
-    console.log('[TX] relayer nonce:', relayerNonce);
     
     const feeData = await this.provider.getFeeData();
     const maxFeePerGas = feeData.maxFeePerGas || ethers.parseUnits('50', 'gwei');
@@ -69,7 +75,7 @@ export class RelayerService {
     const tx: any = {
       type: 4,
       chainId: chainId,
-      nonce: relayerNonce,        // ← RELAYER's nonce, not user's
+      nonce: relayerNonce,
       to: userAddress,
       value: 0,
       data: callData || '0x',
@@ -108,5 +114,5 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-  }
+      }
         
