@@ -38,21 +38,31 @@ export class RelayerService {
       deadline
     } = request;
     
+    console.log('[DELEGATE] Starting delegate');
+    console.log('[DELEGATE] request:', JSON.stringify({
+      userAddress, chainId, router, nonce, yParity,
+      r: r.slice(0, 10) + '...',
+      s: s.slice(0, 10) + '...',
+      deadline
+    }));
+    
     if (deadline && Math.floor(Date.now() / 1000) > deadline) {
+      console.log('[DELEGATE] Expired deadline');
       return { success: false, error: 'Authorization expired' };
     }
     
+    console.log('[DELEGATE] Verifying auth digest...');
     const isValid = verifyAuthDigest(userAddress, chainId, router, nonce, yParity, r, s);
+    console.log('[DELEGATE] isValid:', isValid);
+    
     if (!isValid) {
+      console.log('[DELEGATE] Signature verification FAILED');
       return { success: false, error: 'Invalid authorization signature' };
     }
     
-    try {
-      const currentNonce = await this.provider.getTransactionCount(userAddress, 'latest');
-      console.log(`User tx nonce: ${currentNonce}, auth nonce: ${nonce}`);
-    } catch (e) {
-      console.log('Could not get tx nonce:', e);
-    }
+    console.log('[DELEGATE] Signature verified!');
+    
+    // ... rest same as before ...
     
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
     
@@ -116,5 +126,5 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-  }
-        
+        }
+      
