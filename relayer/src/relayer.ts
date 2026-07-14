@@ -49,11 +49,11 @@ export class RelayerService {
     
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
     
-    // ─── FIX: Use yParity (0/1) not v (27/28) for Signature.from() ───
+    // ─── FIX: Cast yParity to literal type for Signature.from ───
     const signature = ethers.Signature.from({
       r: authTuple[4],
       s: authTuple[5],
-      yParity: yParity  // 0 or 1, correct for EIP-7702
+      yParity: (yParity === 0 ? 0 : 1) as 0 | 1
     });
     
     const authorizationLike: any = {
@@ -114,5 +114,4 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-      }
-        
+  }
