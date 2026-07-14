@@ -44,47 +44,37 @@ export function verifyAuthDigest(
   s: string
 ): boolean {
   console.log('[VERIFY] Starting auth verification');
-  console.log('[VERIFY] userAddress:', userAddress);
-  console.log('[VERIFY] chainId:', chainId);
-  console.log('[VERIFY] router:', router);
-  console.log('[VERIFY] nonce:', nonce);
-  console.log('[VERIFY] yParity:', yParity);
-  console.log('[VERIFY] r:', r.slice(0, 20) + '...');
-  console.log('[VERIFY] s:', s.slice(0, 20) + '...');
   
   try {
-    // Build auth payload RLP
-    const authPayloadItems = [
+    // Build the raw auth digest
+    const authPayloadRlp = ethers.encodeRlp([
       toEvenHex(chainId),
       ethers.getAddress(router),
       toEvenHex(nonce)
-    ];
-    console.log('[VERIFY] authPayloadItems:', authPayloadItems);
-    
-    const authPayloadRlp = ethers.encodeRlp(authPayloadItems);
-    console.log('[VERIFY] authPayloadRlp:', authPayloadRlp);
+    ]);
     
     const authPayloadBytes = ethers.getBytes(authPayloadRlp);
-    console.log('[VERIFY] authPayloadBytes length:', authPayloadBytes.length);
-    
     const magicByte = new Uint8Array([0x05]);
     const combined = new Uint8Array(1 + authPayloadBytes.length);
     combined.set(magicByte, 0);
     combined.set(authPayloadBytes, 1);
     const authHash = ethers.keccak256(combined);
-    console.log('[VERIFY] authHash:', authHash);
+    console.log('[VERIFY] raw authHash:', authHash);
     
-    // Build signature
+    // ─── FIX: personal_sign uses EIP-191 prefix ───
+    // MetaMask signs: keccak256("\x19Ethereum Signed Message:\n" + len(message) + message)
+    // Where message is the raw authHash bytes
+    const prefixedHash = ethers.hashMessage(ethers.getBytes(authHash));
+    console.log('[VERIFY] EIP-191 prefixedHash:', prefixedHash);
+    
     const signature = ethers.Signature.from({
       r: toEvenHex(r),
       s: toEvenHex(s),
       v: yParity + 27
     });
-    console.log('[VERIFY] signature.r:', signature.r.slice(0, 20) + '...');
-    console.log('[VERIFY] signature.s:', signature.s.slice(0, 20) + '...');
-    console.log('[VERIFY] signature.v:', signature.v);
     
-    const recoveredAddress = ethers.recoverAddress(authHash, signature);
+    // Recover from the PREFIXED hash, not raw authHash
+    const recoveredAddress = ethers.recoverAddress(prefixedHash, signature);
     console.log('[VERIFY] recoveredAddress:', recoveredAddress);
     console.log('[VERIFY] expectedAddress:', userAddress);
     console.log('[VERIFY] match:', recoveredAddress.toLowerCase() === userAddress.toLowerCase());
@@ -95,4 +85,3 @@ export function verifyAuthDigest(
     return false;
   }
       }
-      
