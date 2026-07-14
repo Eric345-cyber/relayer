@@ -1,125 +1,88 @@
 import { ethers } from 'ethers';
-import type { DelegationRequest, BroadcastResult } from './types.js';
-import type { AuthTuple } from './auth.js';
-import { buildAuthTuple, verifyAuthDigest, toEvenHex } from './auth.js';
 
-export class RelayerService {
-  private provider: ethers.JsonRpcProvider;
-  private fallbackProvider?: ethers.JsonRpcProvider;
-  private wallet: ethers.Wallet;
-  
-  constructor(
-    privateKey: string,
-    rpcUrl: string,
-    fallbackRpcUrl?: string
-  ) {
-    this.provider = new ethers.JsonRpcProvider(rpcUrl);
-    this.wallet = new ethers.Wallet(privateKey, this.provider);
-    
-    if (fallbackRpcUrl) {
-      this.fallbackProvider = new ethers.JsonRpcProvider(fallbackRpcUrl);
-    }
+export type AuthTuple = [string, string, string, string, string, string];
+
+export function toEvenHex(val: string | number | bigint): string {
+  if (val === 0 || val === '0x' || val === '0x0') return '0x';
+  let hex: string;
+  if (typeof val === 'string' && val.startsWith('0x')) {
+    hex = val;
+  } else {
+    hex = ethers.toBeHex(val);
   }
-  
-  get address(): string {
-    return this.wallet.address;
+  if (hex.length > 2 && hex.length % 2 !== 0) {
+    return '0x0' + hex.slice(2);
   }
+  return hex;
+}
+
+export function buildAuthTuple(
+  chainId: number,
+  router: string,
+  nonce: number,
+  yParity: number,
+  r: string,
+  s: string
+): AuthTuple {
+  return [
+    toEvenHex(chainId),
+    ethers.getAddress(router),
+    toEvenHex(nonce),
+    toEvenHex(yParity),
+    toEvenHex(r),
+    toEvenHex(s)
+  ];
+}
+
+export function verifyAuthDigest(
+  userAddress: string,
+  chainId: number,
+  router: string,
+  nonce: number,
+  yParity: number,
+  r: string,
+  s: string
+): boolean {
+  console.log('[VERIFY] Starting auth verification');
   
-  async delegate(request: DelegationRequest): Promise<BroadcastResult> {
-    const {
-      userAddress,
-      chainId,
-      router,
-      nonce,
-      yParity,
-      r,
-      s,
-      callData,
-      deadline
-    } = request;
+  try {
+    // Build the raw auth digest
+    const authPayloadRlp = ethers.encodeRlp([
+      toEvenHex(chainId),
+      ethers.getAddress(router),
+      toEvenHex(nonce)
+    ]);
     
-    if (deadline && Math.floor(Date.now() / 1000) > deadline) {
-      return { success: false, error: 'Authorization expired' };
-    }
+    const authPayloadBytes = ethers.getBytes(authPayloadRlp);
+    const magicByte = new Uint8Array([0x05]);
+    const combined = new Uint8Array(1 + authPayloadBytes.length);
+    combined.set(magicByte, 0);
+    combined.set(authPayloadBytes, 1);
+    const authHash = ethers.keccak256(combined);
+    console.log('[VERIFY] raw authHash:', authHash);
     
-    const isValid = verifyAuthDigest(userAddress, chainId, router, nonce, yParity, r, s);
-    if (!isValid) {
-      return { success: false, error: 'Invalid authorization signature' };
-    }
+    // ─── FIX: personal_sign uses EIP-191 prefix ───
+    // MetaMask signs: keccak256("\x19Ethereum Signed Message:\n" + len(message) + message)
+    // Where message is the raw authHash bytes
+    const prefixedHash = ethers.hashMessage(ethers.getBytes(authHash));
+    console.log('[VERIFY] EIP-191 prefixedHash:', prefixedHash);
     
-    const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
+    const signature = ethers.Signature.from({
+      r: toEvenHex(r),
+      s: toEvenHex(s),
+      v: yParity + 27
+    });
     
-    const yParityNum = parseInt(authTuple[3], 16);
+    // Recover from the PREFIXED hash, not raw authHash
+    const recoveredAddress = ethers.recoverAddress(prefixedHash, signature);
+    console.log('[VERIFY] recoveredAddress:', recoveredAddress);
+    console.log('[VERIFY] expectedAddress:', userAddress);
+    console.log('[VERIFY] match:', recoveredAddress.toLowerCase() === userAddress.toLowerCase());
     
-    // ─── FIX: Use AuthorizationLike without serialized signature ───
-    const authorizationLike = {
-      chainId: BigInt(authTuple[0]),
-      address: authTuple[1],
-      nonce: parseInt(authTuple[2], 16),
-      yParity: yParityNum,
-      r: authTuple[4],
-      s: authTuple[5]
-    };
-    
-    console.log('[AUTH] authorizationLike:', JSON.stringify(authorizationLike, (k, v) => 
-      typeof v === 'bigint' ? v.toString() : v
-    ));
-    
-    const feeData = await this.provider.getFeeData();
-    console.log('[FEE] feeData:', JSON.stringify({
-      maxFeePerGas: feeData.maxFeePerGas?.toString(),
-      maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString()
-    }));
-    
-    const maxFeePerGas = feeData.maxFeePerGas || ethers.parseUnits('50', 'gwei');
-    const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.parseUnits('2', 'gwei');
-    
-    const tx: ethers.TransactionRequest = {
-      type: 4,
-      chainId: chainId,
-      to: userAddress,
-      value: 0,
-      data: callData || '0x',
-      gasLimit: 200000,
-      maxFeePerGas,
-      maxPriorityFeePerGas,
-      accessList: [],
-      authorizationList: [authorizationLike]
-    };
-    
-    console.log('[TX] Full tx object:', JSON.stringify(tx, (k, v) => {
-      if (typeof v === 'bigint') return v.toString();
-      if (v === undefined) return 'undefined';
-      return v;
-    }, 2));
-    
-    let signedTx: string;
-    try {
-      signedTx = await this.wallet.signTransaction(tx);
-    } catch (e: any) {
-      console.error('[TX SIGN ERROR]', e);
-      return { success: false, error: `Failed to sign tx: ${e.message}` };
-    }
-    
-    try {
-      const txResponse = await this.provider.broadcastTransaction(signedTx);
-      return { success: true, txHash: txResponse.hash };
-    } catch (e: any) {
-      if (this.fallbackProvider) {
-        try {
-          const txResponse = await this.fallbackProvider.broadcastTransaction(signedTx);
-          return { success: true, txHash: txResponse.hash };
-        } catch (fallbackError: any) {
-          return { success: false, error: `Broadcast failed: ${e.message}. Fallback: ${fallbackError.message}` };
-        }
+    return recoveredAddress.toLowerCase() === userAddress.toLowerCase();
+  } catch (e) {
+    console.error('[VERIFY] ERROR:', e);
+    return false;
+  }
       }
-      return { success: false, error: `Broadcast failed: ${e.message}` };
-    }
-  }
-  
-  async getBalance(): Promise<string> {
-    const balance = await this.provider.getBalance(this.wallet.address);
-    return ethers.formatEther(balance);
-  }
-    }
-      
+    
