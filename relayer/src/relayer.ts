@@ -47,15 +47,18 @@ export class RelayerService {
       return { success: false, error: 'Invalid authorization signature' };
     }
     
+    console.log('[DELEGATE] Building auth tuple...');
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
+    console.log('[DELEGATE] authTuple:', authTuple);
     
-    const yParityNum = parseInt(authTuple[3], 16);
+    // ─── FIX: Handle yParity=0 properly ───
+    // toEvenHex(0) returns '0x', parseInt('0x', 16) = NaN
+    const yParityNum = yParity; // Use original number, not parsed from hex
     
-    // ─── FIX: Use AuthorizationLike without serialized signature ───
     const authorizationLike = {
       chainId: BigInt(authTuple[0]),
       address: authTuple[1],
-      nonce: parseInt(authTuple[2], 16),
+      nonce: nonce, // Use original number, not parsed from hex
       yParity: yParityNum,
       r: authTuple[4],
       s: authTuple[5]
@@ -121,5 +124,4 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-      }
-      
+}
