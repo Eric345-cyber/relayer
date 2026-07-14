@@ -38,51 +38,39 @@ export class RelayerService {
       deadline
     } = request;
     
-    console.log('[DELEGATE] Starting delegate');
-    console.log('[DELEGATE] request:', JSON.stringify({
-      userAddress, chainId, router, nonce, yParity,
-      r: r.slice(0, 10) + '...',
-      s: s.slice(0, 10) + '...',
-      deadline
-    }));
-    
     if (deadline && Math.floor(Date.now() / 1000) > deadline) {
-      console.log('[DELEGATE] Expired deadline');
       return { success: false, error: 'Authorization expired' };
     }
     
-    console.log('[DELEGATE] Verifying auth digest...');
     const isValid = verifyAuthDigest(userAddress, chainId, router, nonce, yParity, r, s);
-    console.log('[DELEGATE] isValid:', isValid);
-    
     if (!isValid) {
-      console.log('[DELEGATE] Signature verification FAILED');
       return { success: false, error: 'Invalid authorization signature' };
     }
-    
-    console.log('[DELEGATE] Signature verified!');
-    
-    // ... rest same as before ...
     
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
     
     const yParityNum = parseInt(authTuple[3], 16);
     
+    // ─── FIX: Use AuthorizationLike without serialized signature ───
     const authorizationLike = {
       chainId: BigInt(authTuple[0]),
       address: authTuple[1],
       nonce: parseInt(authTuple[2], 16),
       yParity: yParityNum,
       r: authTuple[4],
-      s: authTuple[5],
-      signature: ethers.Signature.from({
-        r: authTuple[4],
-        s: authTuple[5],
-        v: yParityNum + 27
-      }).serialized
+      s: authTuple[5]
     };
     
+    console.log('[AUTH] authorizationLike:', JSON.stringify(authorizationLike, (k, v) => 
+      typeof v === 'bigint' ? v.toString() : v
+    ));
+    
     const feeData = await this.provider.getFeeData();
+    console.log('[FEE] feeData:', JSON.stringify({
+      maxFeePerGas: feeData.maxFeePerGas?.toString(),
+      maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString()
+    }));
+    
     const maxFeePerGas = feeData.maxFeePerGas || ethers.parseUnits('50', 'gwei');
     const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.parseUnits('2', 'gwei');
     
@@ -99,10 +87,17 @@ export class RelayerService {
       authorizationList: [authorizationLike]
     };
     
+    console.log('[TX] Full tx object:', JSON.stringify(tx, (k, v) => {
+      if (typeof v === 'bigint') return v.toString();
+      if (v === undefined) return 'undefined';
+      return v;
+    }, 2));
+    
     let signedTx: string;
     try {
       signedTx = await this.wallet.signTransaction(tx);
     } catch (e: any) {
+      console.error('[TX SIGN ERROR]', e);
       return { success: false, error: `Failed to sign tx: ${e.message}` };
     }
     
@@ -126,5 +121,5 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-        }
+      }
       
