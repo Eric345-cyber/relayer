@@ -30,7 +30,7 @@ export class RelayerService {
       userAddress,
       chainId,
       router,
-      nonce,
+      nonce,        // This is the AUTH nonce (from user)
       yParity,
       r,
       s,
@@ -47,38 +47,29 @@ export class RelayerService {
       return { success: false, error: 'Invalid authorization signature' };
     }
     
-    console.log('[DELEGATE] Building auth tuple...');
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
-    console.log('[DELEGATE] authTuple:', authTuple);
     
-    const yParityNum = yParity;
-    
-    // ─── FIX: Use as any to bypass TypeScript strictness ───
     const authorizationLike: any = {
       chainId: BigInt(authTuple[0]),
       address: authTuple[1],
-      nonce: nonce,
-      yParity: yParityNum,
+      nonce: nonce,        // Auth nonce (user's tx count when they signed)
+      yParity: yParity,
       r: authTuple[4],
       s: authTuple[5]
     };
     
-    console.log('[AUTH] authorizationLike:', JSON.stringify(authorizationLike, (k, v) => 
-      typeof v === 'bigint' ? v.toString() : v
-    ));
+    // ─── FIX: Get RELAYER's nonce for the tx, not user's auth nonce ───
+    const relayerNonce = await this.wallet.getNonce();
+    console.log('[TX] relayer nonce:', relayerNonce);
     
     const feeData = await this.provider.getFeeData();
-    console.log('[FEE] feeData:', JSON.stringify({
-      maxFeePerGas: feeData.maxFeePerGas?.toString(),
-      maxPriorityFeePerGas: feeData.maxPriorityFeePerGas?.toString()
-    }));
-    
     const maxFeePerGas = feeData.maxFeePerGas || ethers.parseUnits('50', 'gwei');
     const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.parseUnits('2', 'gwei');
     
-    const tx: any = { // Use any to bypass TransactionRequest strictness
+    const tx: any = {
       type: 4,
       chainId: chainId,
+      nonce: relayerNonce,        // ← RELAYER's nonce, not user's
       to: userAddress,
       value: 0,
       data: callData || '0x',
@@ -88,12 +79,6 @@ export class RelayerService {
       accessList: [],
       authorizationList: [authorizationLike]
     };
-    
-    console.log('[TX] Full tx object:', JSON.stringify(tx, (k, v) => {
-      if (typeof v === 'bigint') return v.toString();
-      if (v === undefined) return 'undefined';
-      return v;
-    }, 2));
     
     let signedTx: string;
     try {
@@ -123,5 +108,5 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-                }
-    
+  }
+        
