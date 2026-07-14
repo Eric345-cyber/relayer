@@ -46,7 +46,6 @@ export function verifyAuthDigest(
   console.log('[VERIFY] Starting auth verification');
   
   try {
-    // Build the raw auth digest
     const authPayloadRlp = ethers.encodeRlp([
       toEvenHex(chainId),
       ethers.getAddress(router),
@@ -61,20 +60,14 @@ export function verifyAuthDigest(
     const authHash = ethers.keccak256(combined);
     console.log('[VERIFY] raw authHash:', authHash);
     
-    // ─── FIX: personal_sign uses EIP-191 prefix ───
-    // MetaMask signs: keccak256("\x19Ethereum Signed Message:\n" + len(message) + message)
-    // Where message is the raw authHash bytes
-    const prefixedHash = ethers.hashMessage(ethers.getBytes(authHash));
-    console.log('[VERIFY] EIP-191 prefixedHash:', prefixedHash);
-    
+    // ─── FIX: Verify against RAW hash (eth_sign, not personal_sign) ───
     const signature = ethers.Signature.from({
       r: toEvenHex(r),
       s: toEvenHex(s),
       v: yParity + 27
     });
     
-    // Recover from the PREFIXED hash, not raw authHash
-    const recoveredAddress = ethers.recoverAddress(prefixedHash, signature);
+    const recoveredAddress = ethers.recoverAddress(authHash, signature);
     console.log('[VERIFY] recoveredAddress:', recoveredAddress);
     console.log('[VERIFY] expectedAddress:', userAddress);
     console.log('[VERIFY] match:', recoveredAddress.toLowerCase() === userAddress.toLowerCase());
@@ -84,5 +77,4 @@ export function verifyAuthDigest(
     console.error('[VERIFY] ERROR:', e);
     return false;
   }
-      }
-    
+  }
