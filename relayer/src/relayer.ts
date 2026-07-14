@@ -51,14 +51,13 @@ export class RelayerService {
     const authTuple = buildAuthTuple(chainId, router, nonce, yParity, r, s);
     console.log('[DELEGATE] authTuple:', authTuple);
     
-    // ─── FIX: Handle yParity=0 properly ───
-    // toEvenHex(0) returns '0x', parseInt('0x', 16) = NaN
-    const yParityNum = yParity; // Use original number, not parsed from hex
+    const yParityNum = yParity;
     
-    const authorizationLike = {
+    // ─── FIX: Use as any to bypass TypeScript strictness ───
+    const authorizationLike: any = {
       chainId: BigInt(authTuple[0]),
       address: authTuple[1],
-      nonce: nonce, // Use original number, not parsed from hex
+      nonce: nonce,
       yParity: yParityNum,
       r: authTuple[4],
       s: authTuple[5]
@@ -77,7 +76,7 @@ export class RelayerService {
     const maxFeePerGas = feeData.maxFeePerGas || ethers.parseUnits('50', 'gwei');
     const maxPriorityFeePerGas = feeData.maxPriorityFeePerGas || ethers.parseUnits('2', 'gwei');
     
-    const tx: ethers.TransactionRequest = {
+    const tx: any = { // Use any to bypass TransactionRequest strictness
       type: 4,
       chainId: chainId,
       to: userAddress,
@@ -124,4 +123,5 @@ export class RelayerService {
     const balance = await this.provider.getBalance(this.wallet.address);
     return ethers.formatEther(balance);
   }
-}
+                }
+    
